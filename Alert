@@ -1,0 +1,101 @@
+import SwiftUI
+import AVFoundation
+import Vision
+
+struct ContentView: View {
+    @StateObject private var cameraModel = CameraModel()
+    
+    var body: some View {
+        ZStack {
+            CameraPreview(session: cameraModel.session)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack {
+                Spacer()
+                HStack {
+                    Text(cameraModel.detectedPlate.isEmpty ? "Scanning..." : "Plate: \(cameraModel.detectedPlate)")
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding()
+            }
+        }
+        .onAppear {
+            cameraModel.startSession()
+        }
+    }
+}
+
+class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    let session = AVCaptureSession()
+    @Published var detectedPlate: String = ""
+    
+    override init() {
+        super.init()
+        setupCamera()
+    }
+    
+    private func setupCamera() {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else { return }
+        
+        do {
+            let input = try AVCaptureDeviceInput(device: device)
+            session.addInput(input)
+            
+            let output = AVCaptureVideoDataOutput()
+            output.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+            session.addOutput(output)
+        } catch {
+            print("Error setting up camera: \(error)")
+        }
+    }
+    
+    func startSession() {
+        DispatchQueue.global(qos: .background).async {
+            self.session.startRunning()
+        }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        let request = VNRecognizeTextRequest { request, error in
+            guard let observations = request.results as? [VNRecognizedTextObservation], error == nil else { return }
+            
+            DispatchQueue.main.async {
+                if let topCandidate = observations.first?.topCandidates(1).first {
+                    self.detectedPlate = topCandidate.string
+                }
+            }
+        }
+        
+        let requestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        try? requestHandler.perform([request])
+    }
+}
+
+struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: UIScreen.main.bounds)
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.frame = view.frame
+        view.layer.addSublayer(previewLayer)
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+@main
+struct DashcamALPRApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
