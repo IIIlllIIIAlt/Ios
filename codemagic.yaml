@@ -1,0 +1,21 @@
+workflows:
+  ios:
+    name: iOS Build Workflow
+    max_build_duration: 60  # Optional: max build time in minutes
+    ios:
+      xcode_version: latest  # Latest available Xcode version
+      flutter: true  # Set to true if you're using Flutter (change this if you're using pure Swift)
+      cache:
+        paths:
+          - "Pods"
+      build:
+        # Example if you're building with Swift
+        script:
+          - echo "Building the iOS app"
+          - xcodebuild -workspace YourProject.xcworkspace -scheme YourScheme -sdk iphonesimulator -configuration Release clean build
+    publish:
+      # Optional: CodeMagic settings for app distribution (like TestFlight)
+      app_store_connect:
+        username: YOUR_APPLE_ID
+        password: YOUR_APP_PASSWORD
+        app_identifier: com.yourapp.identifier
